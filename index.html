@@ -1,123 +1,182 @@
 <!DOCTYPE html>
 <html lang="en-us">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Bubble Man Rises</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes">
+    <title>Bubble Man Rises</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <style>
+      /* ===== Ideofuzion template — responsive letterbox + loading UI =====
+         All overrides live inline here because Unity regenerates TemplateData/style.css
+         on every build; !important beats it. */
 
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
-    }
-
-    #unity-container {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    #unity-canvas {
-      position: absolute;
-      /* Size is set by the JS resize function */
-    }
-  </style>
-</head>
-<body>
-  <div id="unity-container">
-    <canvas id="unity-canvas"></canvas>
-  </div>
-
-  <script>
-    // ── Portrait aspect ratio ──────────────────────────────────────────────────
-    // The Canvas CanvasScaler reference resolution is 720 × 1280 (portrait).
-    // ProjectSettings shows 960×600 but that is the landscape desktop default
-    // and is WRONG for this portrait game — same gotcha as Bird Jump.
-    var GAME_ASPECT = 720 / 1280;
-
-    function resizeCanvas() {
-      var canvas = document.getElementById('unity-canvas');
-      var availW = window.innerWidth;
-      var availH = window.innerHeight;
-      var w, h;
-      if (availW / availH > GAME_ASPECT) {
-        h = availH; w = Math.round(h * GAME_ASPECT);
-      } else {
-        w = availW; h = Math.round(w / GAME_ASPECT);
+      html, body {
+        margin: 0; padding: 0; width: 100%; height: 100%;
+        overflow: hidden; background: #0e0e12;
       }
-      canvas.style.width  = w + 'px';
-      canvas.style.height = h + 'px';
-      canvas.style.left   = Math.round((availW - w) / 2) + 'px';
-      canvas.style.top    = Math.round((availH - h) / 2) + 'px';
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
 
-    // ── Unity loader ──────────────────────────────────────────────────────────
-    var buildUrl   = 'Build';
-    var loaderUrl  = buildUrl + '/build.loader.js';
-    var config = {
-      dataUrl:      buildUrl + '/build.data',
-      frameworkUrl: buildUrl + '/build.framework.js',
-      codeUrl:      buildUrl + '/build.wasm',
-      streamingAssetsUrl: 'StreamingAssets',
-      companyName:   "ASN Games",
-      productName:   "Bubble Man Rises",
-      productVersion: "1.0",
-      matchWebGLToCanvasSize: true,
-    };
+      /* Full-viewport shell. Solid dark = clean loading backdrop + clean letterbox bars. */
+      #unity-container {
+        position: fixed; inset: 0;
+        background: #0e0e12;
+      }
 
-    var unityInstance = null;
-    var script = document.createElement('script');
-    script.src = loaderUrl;
-    script.onload = function () {
-      createUnityInstance(document.querySelector('#unity-canvas'), config)
-        .then(function (instance) {
-          unityInstance = instance;
+      /* Canvas is positioned by JS (letterbox). Must be TRANSPARENT so the backdrop shows
+         through while loading; Unity fills it once the game renders. */
+      #unity-canvas {
+        display: block; position: absolute;
+        background: transparent !important;
+      }
+
+      /* ---- Loading bar ---- */
+      #unity-loading-bar {
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        display: none; z-index: 10; text-align: center;
+      }
+      #unity-logo {
+        width: 180px; height: 180px; margin: 0 auto 12px;
+        background: url('TemplateData/game-icon.png') center / contain no-repeat;
+      }
+      #unity-progress-bar-empty {                 /* track */
+        width: 300px; height: 18px; margin: 12px auto 0;
+        background: #d9d9d9 !important; background-image: none !important;
+        border-radius: 9px; overflow: hidden;
+      }
+      #unity-progress-bar-full {                  /* fill */
+        width: 0%; height: 100%;
+        background: #1C3A5B !important; background-image: none !important;
+        margin-top: 0 !important;                 /* fix: default style.css pushes it down */
+        border-radius: 9px; transition: width 0.1s ease;
+      }
+      #unity-progress-percent {                   /* % readout */
+        color: #F2F2F2; font: 14px arial, sans-serif; margin-top: 6px;
+      }
+
+      /* No footer in this build. */
+      #unity-footer { display: none !important; }
+      #unity-warning {
+        position: absolute; left: 50%; top: 5%; transform: translate(-50%);
+        background: white; padding: 10px; display: none; z-index: 20;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="unity-container">
+      <canvas id="unity-canvas" width=1080 height=1920 tabindex="-1"></canvas>
+      <div id="unity-loading-bar">
+        <div id="unity-logo"></div>
+        <div id="unity-progress-bar-empty"><div id="unity-progress-bar-full"></div></div>
+        <div id="unity-progress-percent">0%</div>
+      </div>
+      <div id="unity-warning"> </div>
+    </div>
+    <script>
+      var canvas = document.querySelector("#unity-canvas");
+
+      // ===== Responsive letterbox: largest rect of the game's aspect that fits, centered =====
+      // Hardcoded, NOT 1080/1920 like the other Ideofuzion games: the Canvas
+      // CanvasScaler reference resolution here is 720x1280 (portrait), and this project's WebGL
+      // canvas size in Player Settings has not been confirmed to match. Bird Jump can use the
+      // macros because it sets 1080x1920 (the same 0.5625 aspect). If this project's WebGL canvas
+      // size is set to 1080x1920 too, swap this line for: 1080 / 1920.
+      var GAME_ASPECT = 720 / 1280;
+      function resizeCanvas() {
+        var availW = window.innerWidth, availH = window.innerHeight, w, h;
+        if (availW / availH > GAME_ASPECT) { h = availH; w = Math.round(h * GAME_ASPECT); }
+        else                               { w = availW; h = Math.round(w / GAME_ASPECT); }
+        canvas.style.width  = w + "px";
+        canvas.style.height = h + "px";
+        canvas.style.left   = Math.round((availW - w) / 2) + "px";
+        canvas.style.top    = Math.round((availH - h) / 2) + "px";
+      }
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      // ===== Single source of truth for the loading bar + percent =====
+      function setLoadProgress(p) {
+        var pct  = Math.round(p * 100);
+        var full = document.querySelector("#unity-progress-bar-full");
+        var txt  = document.querySelector("#unity-progress-percent");
+        if (full) full.style.width = pct + "%";
+        if (txt)  txt.innerText    = pct + "%";
+      }
+
+      function unityShowBanner(msg, type) {
+        var warningBanner = document.querySelector("#unity-warning");
+        function updateBannerVisibility() {
+          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+        }
+        var div = document.createElement('div');
+        div.innerHTML = msg;
+        warningBanner.appendChild(div);
+        if (type == 'error') div.style = 'background: red; padding: 10px;';
+        else {
+          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+          setTimeout(function () { warningBanner.removeChild(div); updateBannerVisibility(); }, 5000);
+        }
+        updateBannerVisibility();
+      }
+
+      var buildUrl = "Build";
+      var loaderUrl = buildUrl + "/build.loader.js";
+      var config = {
+        arguments: [],
+        dataUrl: buildUrl + "/build.data",
+        frameworkUrl: buildUrl + "/build.framework.js",
+        codeUrl: buildUrl + "/build.wasm",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "ASN Games",
+        productName: "Bubble Man Rises",
+        productVersion: "1.0",
+        showBanner: unityShowBanner,
+        // Render buffer tracks the CSS (letterboxed) canvas size -> responsive, no distortion.
+        matchWebGLToCanvasSize: true,
+      };
+
+      document.querySelector("#unity-loading-bar").style.display = "block";
+
+      var script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = () => {
+        createUnityInstance(canvas, config, setLoadProgress).then((unityInstance) => {
+          window.unityInstance = unityInstance;
+
+          // Force 100% before hiding (Unity's onProgress plateaus at 0.9).
+          setLoadProgress(1);
+
+          // Safari/WebKit keeps painting loading elements even after display:none on a parent.
+          // Hide each element explicitly, clear any background image, then REMOVE it from the DOM
+          // so nothing can be painted. (Only #unity-logo has a background image — the game icon.)
+          function killEl(sel) {
+            var el = document.querySelector(sel);
+            if (!el) return;
+            el.style.display = "none";
+            el.style.visibility = "hidden";
+            el.style.opacity = "0";
+            el.style.backgroundImage = "none";   // kill any background image (the icon)
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }
+          killEl("#unity-logo");
+          killEl("#unity-progress-bar-full");
+          killEl("#unity-progress-bar-empty");
+          killEl("#unity-progress-percent");
+          killEl("#unity-loading-bar");
+          // No custom loading overlay/cover div in this template — nothing else to kill.
+
           resizeCanvas();
 
-          // Tell any parent frame the game is ready.
-          window.parent.postMessage({ type: 'game:ready' }, '*');
-
-          // ── Self-test: ?playerTest=1 ─────────────────────────────────────
-          var params = new URLSearchParams(window.location.search);
-          if (params.get('playerTest') === '1') {
-            var size = 256;
-            var c = document.createElement('canvas');
-            c.width = c.height = size;
-            var ctx = c.getContext('2d');
-            ctx.clearRect(0, 0, size, size);
-            ctx.beginPath();
-            ctx.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
-            ctx.fillStyle = '#FF2D78';
-            ctx.fill();
-            ctx.strokeStyle = '#FFFFFF';
-            ctx.lineWidth = 8;
-            ctx.stroke();
-            unityInstance.SendMessage('Bridge', 'SetPlayerImage', c.toDataURL('image/png'));
-          }
-        })
-        .catch(function (message) {
-          console.error('[IdeofuzionBridge] Unity load error:', message);
-        });
-    };
-    document.head.appendChild(script);
-
-    // ── Parent → Game bridge (campaign:init) ─────────────────────────────────
-    window.addEventListener('message', function (event) {
-      var msg = event.data;
-      if (!msg || msg.type !== 'campaign:init') return;
-      var cfg = msg.config || {};
-      if (!unityInstance) return;
-      if (cfg.playerImage) {
-        unityInstance.SendMessage('Bridge', 'SetPlayerImage', cfg.playerImage);
-      }
-    });
-  </script>
-</body>
+          // ===== Page <-> game bridge (GameBull) =====
+          // No campaign:init image handler here, unlike LapsFuse (SetBallImage) and Bird Jump
+          // (SetBirdImage). The partner skin arrives from the GameBull /context API instead:
+          // GameBullLobbyController.ApplyJumperSprite() finds the GameObject named by its
+          // "Jumper Object Name" field and writes the sprite to its SpriteRenderer. Nothing to
+          // push from the page, so game:ready is the whole contract.
+          try { window.parent.postMessage({ type: 'game:ready' }, '*'); } catch (e) {}
+        }).catch((message) => { alert(message); });
+      };
+      document.body.appendChild(script);
+    </script>
+  </body>
 </html>
