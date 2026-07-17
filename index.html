@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Bubble Man Rises</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #unity-container {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #unity-canvas {
+      position: absolute;
+      /* Size is set by the JS resize function */
+    }
+  </style>
+</head>
+<body>
+  <div id="unity-container">
+    <canvas id="unity-canvas"></canvas>
+  </div>
+
+  <script>
+    // ── Portrait aspect ratio ──────────────────────────────────────────────────
+    // The Canvas CanvasScaler reference resolution is 720 × 1280 (portrait).
+    // ProjectSettings shows 960×600 but that is the landscape desktop default
+    // and is WRONG for this portrait game — same gotcha as Bird Jump.
+    var GAME_ASPECT = 720 / 1280;
+
+    function resizeCanvas() {
+      var canvas = document.getElementById('unity-canvas');
+      var availW = window.innerWidth;
+      var availH = window.innerHeight;
+      var w, h;
+      if (availW / availH > GAME_ASPECT) {
+        h = availH; w = Math.round(h * GAME_ASPECT);
+      } else {
+        w = availW; h = Math.round(w / GAME_ASPECT);
+      }
+      canvas.style.width  = w + 'px';
+      canvas.style.height = h + 'px';
+      canvas.style.left   = Math.round((availW - w) / 2) + 'px';
+      canvas.style.top    = Math.round((availH - h) / 2) + 'px';
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // ── Unity loader ──────────────────────────────────────────────────────────
+    var buildUrl   = 'Build';
+    var loaderUrl  = buildUrl + '/build.loader.js';
+    var config = {
+      dataUrl:      buildUrl + '/build.data',
+      frameworkUrl: buildUrl + '/build.framework.js',
+      codeUrl:      buildUrl + '/build.wasm',
+      streamingAssetsUrl: 'StreamingAssets',
+      companyName:   "ASN Games",
+      productName:   "Bubble Man Rises",
+      productVersion: "1.0",
+      matchWebGLToCanvasSize: true,
+    };
+
+    var unityInstance = null;
+    var script = document.createElement('script');
+    script.src = loaderUrl;
+    script.onload = function () {
+      createUnityInstance(document.querySelector('#unity-canvas'), config)
+        .then(function (instance) {
+          unityInstance = instance;
+          resizeCanvas();
+
+          // Tell any parent frame the game is ready.
+          window.parent.postMessage({ type: 'game:ready' }, '*');
+
+          // ── Self-test: ?playerTest=1 ─────────────────────────────────────
+          var params = new URLSearchParams(window.location.search);
+          if (params.get('playerTest') === '1') {
+            var size = 256;
+            var c = document.createElement('canvas');
+            c.width = c.height = size;
+            var ctx = c.getContext('2d');
+            ctx.clearRect(0, 0, size, size);
+            ctx.beginPath();
+            ctx.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#FF2D78';
+            ctx.fill();
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 8;
+            ctx.stroke();
+            unityInstance.SendMessage('Bridge', 'SetPlayerImage', c.toDataURL('image/png'));
+          }
+        })
+        .catch(function (message) {
+          console.error('[IdeofuzionBridge] Unity load error:', message);
+        });
+    };
+    document.head.appendChild(script);
+
+    // ── Parent → Game bridge (campaign:init) ─────────────────────────────────
+    window.addEventListener('message', function (event) {
+      var msg = event.data;
+      if (!msg || msg.type !== 'campaign:init') return;
+      var cfg = msg.config || {};
+      if (!unityInstance) return;
+      if (cfg.playerImage) {
+        unityInstance.SendMessage('Bridge', 'SetPlayerImage', cfg.playerImage);
+      }
+    });
+  </script>
+</body>
+</html>
