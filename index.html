@@ -17,10 +17,19 @@
         overflow: hidden; background: #0e0e12;
       }
 
-      /* Full-viewport shell. Solid dark = clean loading backdrop + clean letterbox bars. */
+      /* Full-viewport shell. The game's own key art sits behind the loading UI, blurred and
+         darkened at bake time (Tools/bake_loading_bg.py) -- never a CSS filter: blur(), which is
+         expensive on phones and this screen renders while the device is downloading tens of
+         megabytes of wasm.
+
+         `cover`, never `100% 100%`: cover crops, stretch distorts, and portrait art stretched into
+         a wide letterboxed viewport looks broken.
+
+         #0e0e12 stays underneath as the fallback if the JPG is slow, and is identical to GROUND in
+         the bake script. It is also what paints the letterbox bars. */
       #unity-container {
         position: fixed; inset: 0;
-        background: #0e0e12;
+        background: #0e0e12 url('TemplateData/loading-bg.jpg') center / cover no-repeat;
       }
 
       /* Canvas is positioned by JS (letterbox). Must be TRANSPARENT so the backdrop shows
@@ -102,7 +111,9 @@
       // nothing here awaits, so the Unity download is never delayed, and every failure path falls
       // back to the static TemplateData/game-icon.png.
       (function loadTenantIcon() {
-        var DEFAULT_API_BASE = "https://api.g-b.store";   // production; matches GameBullEndpoints.BaseUrl. ?apiBase= wins.
+        // MUST match GameBullEndpoints.BaseUrl -- flipped together by Tools > GameBull > Use
+        // Staging/Production API. A URL ?apiBase= overrides it.
+        var DEFAULT_API_BASE = "https://api.g-b.store";
         var DEFAULT_GAME_ID  = "BUBBLE_MAN";                      // fallback only; ?gameId= from URL wins
         var FETCH_TIMEOUT_MS = 4000;
 
