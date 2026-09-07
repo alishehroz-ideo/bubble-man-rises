@@ -26,7 +26,10 @@
          a wide letterboxed viewport looks broken.
 
          #0e0e12 stays underneath as the fallback if the JPG is slow, and is identical to GROUND in
-         the bake script. It is also what paints the letterbox bars. */
+         the bake script. It is also what paints the LETTERBOX BARS, which is why the image is
+         stripped back off this element the moment Unity renders -- see the teardown beside the
+         killEl() calls. Leave it set and a band of blurred art stays above and below the game for
+         the whole session. */
       #unity-container {
         position: fixed; inset: 0;
         background: #0e0e12 url('TemplateData/loading-bg.jpg') center / cover no-repeat;
@@ -278,6 +281,16 @@
           killEl("#unity-progress-bar-empty");
           killEl("#unity-progress-percent");
           killEl("#unity-loading-bar");
+
+          // The blurred key art is a LOADING backdrop and has to come down with the rest of the
+          // loading UI. #unity-container is the FULL VIEWPORT while the canvas is letterboxed
+          // inside it, so the container's background is what paints the letterbox bars -- leaving
+          // the image set keeps a band of blurred art above and below the game for the whole
+          // session, with a visible seam where the canvas starts. Harmless while that background
+          // was a flat colour; not harmless once it is a picture. Back to the flat ground colour,
+          // which is what the bars are meant to be.
+          var container = document.querySelector("#unity-container");
+          if (container) container.style.background = "#0e0e12";
 
           resizeCanvas();
 
